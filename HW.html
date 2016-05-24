@@ -17,12 +17,12 @@
         varying vec4 v_Color;
 
         void main() { 
-        vec4 coords = vec4(coords,1.0);
-        vec4 transformedVertex = modelview * coords;
-        gl_Position = projection * transformedVertex;
-        v_Position = vec3(gl_Position);
-        v_Normal = normalize(normalMatrix*normal);
-        v_Color = color;
+	        vec4 coords = vec4(coords,1.0);
+	        vec4 transformedVertex = modelview * coords;
+	        gl_Position = projection * transformedVertex;
+	        v_Position = vec3(transformedVertex);
+	        v_Normal = normalize(normalMatrix*normal);
+	        v_Color = color;
         }
     </script>
     <script type="x-shader/x-fragment" id="fshader">
@@ -34,22 +34,39 @@
         uniform vec3 u_SpecularColor;
         uniform float u_Exponent;
         uniform vec3 u_AmbientLight;
-        
+        uniform vec3 u_DirectionalLight;
+
         varying vec3 v_Normal;
         varying vec3 v_Position;
         varying vec4 v_Color;
         void main() {
+        	//Phong Shading as seen on PointLightedCube example improved with 3 lights
+        	//(2 positional lights and 1 directional light). 
             vec3 normal = normalize(v_Normal);
             vec3 lightDirection = normalize(u_LightPosition - v_Position);
-            vec3 viewerDirection = normalize(u_ViewerPosition - v_Position);
+            vec3 lightDirection2 = normalize(u_LightPosition2 - v_Position);
+            vec3 lightDirection3 = u_DirectionalLight; 	//No need to normalize since it's
+            											//already a direction equal for each fragment.
+            vec3 viewerDirection = -normalize(u_ViewerPosition - v_Position);
+
             vec3 reflectDirection = normalize(reflect(lightDirection, normal));
-            
-            float nDotL = max(dot(lightDirection, normal), 0.0);
+            vec3 reflectDirection2 = normalize(reflect(lightDirection2,normal));
+            vec3 reflectDirection3 = normalize(reflect(lightDirection3,normal));
+
+            float nDotL = max(dot(lightDirection, normal), 0.0); 
             float rDotV = pow(max(dot(reflectDirection, viewerDirection), 0.0),u_Exponent);
-            vec3 diffuse = u_LightColor * v_Color.rgb * nDotL;
-            vec3 specular = u_LightColor * u_SpecularColor.rgb * rDotV ;
+
+            float nDotL2 = max(dot(lightDirection2, normal), 0.0);
+            float rDotV2 = pow(max(dot(reflectDirection2, viewerDirection), 0.0),u_Exponent);
+            
+            float nDotL3 = max(dot(lightDirection3, normal), 0.0);
+            float rDotV3 = pow(max(dot(reflectDirection3, viewerDirection), 0.0),u_Exponent);
+
+            vec3 diffuse = u_LightColor * v_Color.rgb * (nDotL + nDotL2 + nDotL3);
+            vec3 specular = u_LightColor * u_SpecularColor.rgb * (rDotV + rDotV2 + rDotV3);
             vec3 ambient = u_AmbientLight * v_Color.rgb;
-            gl_FragColor = vec4(diffuse + ambient + specular, v_Color.a);
+
+            gl_FragColor = vec4(diffuse + ambient + specular , v_Color.a);
         }
     </script>
 
@@ -90,14 +107,18 @@
 
         var currentColor = [1, 1, 1, 1]; // The current drawing color; objects are rendered using this color.
         
-        //Variables that will be used for the lights.
         var u_LightColor;
         var u_LightPosition;
-        var u_ViewerPosition;
-        var u_SpecularColor;
-        var u_Exponent;
-        var u_AmbientLight;
-        
+        var u_LightPosition2;
+        var u_DirectionalLight;
+
+        var startTime;
+
+        //"Simple Harmonic Oscillator" parameter used for moving the scene objects.
+        //The time is retrived using the getTime() functions;
+		var Amplitude = 4;
+        var Omega;
+
         /**
          * Draws the image, which consists of either the "world" or a closeup of the "car".
          */
@@ -106,27 +127,40 @@
             gl.clearColor(0, 0, 0, 1);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             mat4.perspective(projection, Math.PI / 4, 1, 1, 50); //assigns to the matrix projection the transformation with frustum
-            //defined by an eye angle of 45 degrees (pi/4), ratio of width/height
+            //defined by an eye time of 45 degrees (pi/4), ratio of width/height
             // of 1, near plane 1 and far plane 50
             gl.uniformMatrix4fv(uProjection, false, projection); //assigns the value of the matrix projection to the uniform matrix uProjection
             
             
-            modelview = rotator.getViewMatrix(); //computes the modelview from the position of the rotator
+            modelview = rotator.getViewMatrix(); //computes the modelview from the position of the rotato
             
-            //This is useless since the normal Matrix will be computed in the render() function for each object that is gonna be rendered.
-            //mat3.normalFromMat4(normalMatrix, modelview); //computes the normalMatrix (used to multiply the normals) from the modelview
-            
-            //Movement of the light that simulates the sun.
-            //var light_vector = vec4.fromValues(Math.cos(frameNumber/30)*30,20,Math.sin(frameNumber/30)*30,1.0);
-            
-            var light_vector = vec4.fromValues(0.0,3.0,0.0,1.0);
-            mat4.multiply(light_vector,modelview,light_vector);
-            gl.uniform3f(u_LightPosition,light_vector[0],light_vector[1],light_vector[2]);
-            
+            Omega = setPeriod(5000);
+            var light_buffer_coordinates = vec4.fromValues((Amplitude + 0.7)*Math.cos(Omega * getTime() + 0.35),0.3,(Amplitude + 0.7)*Math.sin(Omega * getTime() + 0.35), 1.0);
+            mat4.multiply(light_buffer_coordinates,modelview,light_buffer_coordinates);
+            gl.uniform3f(u_LightPosition,light_buffer_coordinates[0],light_buffer_coordinates[1],light_buffer_coordinates[2]);
+
+            Omega = setPeriod(3000);
+            light_buffer_coordinates = vec4.fromValues((Amplitude - 0.15)*Math.sin(Omega * getTime() + 0.45),0.3,(Amplitude-0.15)*Math.cos(Omega * getTime() + 0.45), 1.0);
+            mat4.multiply(light_buffer_coordinates,modelview,light_buffer_coordinates);
+            gl.uniform3f(u_LightPosition2,light_buffer_coordinates[0],light_buffer_coordinates[1],light_buffer_coordinates[2]);
+
+            Omega = setPeriod(10000);
+            light_buffer_coordinates = vec4.fromValues(Math.cos(Omega * getTime()/1.5),Math.sin(Omega * getTime()/1.5),0.0,0.0);
+            mat4.multiply(light_buffer_coordinates,modelview,light_buffer_coordinates);
+            gl.uniform3f(u_DirectionalLight,light_buffer_coordinates[0],light_buffer_coordinates[1],light_buffer_coordinates[2]);
+
             if (show == 1)
                 world();
             else
                 car();
+        }
+
+        /**
+         * Sets for all the oscillators their oscillation period.
+         * Must be called before setting any oscillator.
+         */
+        function setPeriod(period) {
+        	return 2 * Math.PI / period;
         }
 
         /**
@@ -150,30 +184,50 @@
             mat4.rotate(modelview, modelview, (90) / 180 * Math.PI, [-1, 0, 0]);
             ring.render();
             popMatrix();
-            //First Bycicle
+            
+            //First Bicycle
             pushMatrix();
-            mat4.translate(modelview, modelview, [0, 0.4, 0]);
+            Omega = setPeriod(5000);
+            var coordFirstBicycleX = Math.cos(Omega * getTime())*(Amplitude + 0.4);
+            var coordFirstBicycleY = Math.sin(Omega * getTime())*(Amplitude + 0.4);
+            mat4.translate(modelview, modelview, [coordFirstBicycleX, 0.4, coordFirstBicycleY]);
+            mat4.rotate(modelview,modelview, Math.atan2(coordFirstBicycleX,coordFirstBicycleY),[0,1,0]);
             mat4.scale(modelview, modelview, [0.4, 0.4, 0.4]);
             bicycle();
             popMatrix();
+            
+            //Second Bicycle
             pushMatrix();
-            mat4.translate(modelview, modelview, [0.5, 0.4, 0.2]);
-            mat4.rotate(modelview, modelview, Math.PI / 4, [0, 1, 0])
-            mat4.scale(modelview, modelview, [0.4, 0.4, 0.4]);
+            Omega = setPeriod(3000);	
+            coordFirstBicycleX = Math.cos(Omega * getTime())*(Amplitude - 0.4);
+            coordFirstBicycleY = Math.sin(Omega * getTime())*(Amplitude - 0.4);
+            mat4.translate(modelview, modelview, [coordFirstBicycleY, 0.4, coordFirstBicycleX]);
+            mat4.rotate(modelview, modelview, Math.atan2(coordFirstBicycleY,coordFirstBicycleX), [0, 1, 0]);
+            mat4.scale(modelview, modelview, [-0.4, 0.4, 0.4]);
             bicycle();
             popMatrix();
+			
+			pushMatrix();
+            mat4.translate(modelview,modelview,[0,-0.8,0]);
+            mat4.scale(modelview,modelview,[0.04,-0.04,0.04]);
+            mat4.rotate(modelview,modelview,Math.atan2(coordFirstBicycleX,coordFirstBicycleY),[0.0,1.0,0.0]);
+            teapot.render();
+            popMatrix();
+
             pushMatrix();
             mat4.translate(modelview, modelview, [5.3, 0, 0]);
             mat4.scale(modelview, modelview, [0.5, 0.5, 0.5]);
             mat4.rotate(modelview, modelview, (90) / 180 * Math.PI, [-1, 0, 0]);
             tree();
             popMatrix();
+            
             pushMatrix();
             mat4.translate(modelview, modelview, [-0.4, 0, 0]);
             mat4.scale(modelview, modelview, [0.5, 0.5, 0.5]);
             mat4.rotate(modelview, modelview, (90) / 180 * Math.PI, [-1, 0, 0]);
             tree();
             popMatrix();
+            
             pushMatrix();
             mat4.translate(modelview, modelview, [0.945, 0, 1]);
             mat4.scale(modelview, modelview, [0.5, 0.5, 0.5]);
@@ -198,17 +252,17 @@
         /**
          * Draws a tree consisting of a green cone with a brown cylinder for a trunk.
          */
-        function tree() {
+        function tree() {	 
             pushMatrix();
             pushMatrix();
             mat4.translate(modelview, modelview, [-5.3, 0, 0]);
-            mat4.scale(modelview, modelview, [0.5, 0.5, 3]);
+            mat4.scale(modelview, modelview, [0.5, 0.5, 6]);
             currentColor = [0.5, 0.3, 0.1, 1];
             cylinder.render();
             popMatrix();
             pushMatrix();
-            mat4.translate(modelview, modelview, [-1.9, 0, 3]);
-            mat4.scale(modelview, modelview, [1.7, 1.7, 1.7]);
+            mat4.translate(modelview, modelview, [-1.9, 0, 6]);
+            mat4.scale(modelview, modelview, [1.7, 1.7, 8]);
             currentColor = [0, 0.8, 0, 1];
             cone.render();
             popMatrix();
@@ -300,7 +354,7 @@
         function wheel() {
             pushMatrix();
             currentColor = [0.5, 0.5, 0.5, 1];
-            mat4.scale(modelview, modelview, [1, 1, 0.4]);
+            mat4.scale(modelview, modelview, [0.8, 0.8, 0.4]);
             //mat4.rotate(modelview,modelview,(90)/180*Math.PI,[1,0,0]);       //Don't know why we have this rotations here
             torus.render();
             popMatrix();
@@ -319,6 +373,11 @@
          */
         function popMatrix() {
             modelview = matrixStack.pop();
+        }
+
+        function getTime() {
+        	var d = new Date();
+        	return d.getTime() - startTime;
         }
 
 
@@ -488,22 +547,22 @@
                 uNormalMatrix = gl.getUniformLocation(prog, "normalMatrix");
                 
                 u_LightColor = gl.getUniformLocation(prog, "u_LightColor");
-                u_ViewerPosition = gl.getUniformLocation(prog, "u_ViewerPosition");
-                u_SpecularColor = gl.getUniformLocation(prog, "u_SpecularColor");
-                u_Exponent = gl.getUniformLocation(prog, "u_Exponent");
+                var u_ViewerPosition = gl.getUniformLocation(prog, "u_ViewerPosition");
+                var u_SpecularColor = gl.getUniformLocation(prog, "u_SpecularColor");
+                var u_Exponent = gl.getUniformLocation(prog, "u_Exponent");
+                u_LightPosition2 = gl.getUniformLocation(prog,"u_LightPosition2");
                 u_LightPosition = gl.getUniformLocation(prog, "u_LightPosition");
-                u_AmbientLight = gl.getUniformLocation(prog, "u_AmbientLight");
+                var u_AmbientLight = gl.getUniformLocation(prog, "u_AmbientLight");
+                u_DirectionalLight = gl.getUniformLocation(prog,"u_DirectionalLight");
                 
-                gl.uniform3f(u_LightColor, 1.0, 1.0, 1.0);
-                // Set the light direction (in the world coordinate)
-                gl.uniform3f(u_LightPosition, 0.0,3.0, 0.0);
-                //gl.uniform3f(u_LightPosition2, 0, 14.5, 0);
+                gl.uniform3f(u_ViewerPosition,0,0,0);
+                gl.uniform3f(u_LightColor, 0.8,0.7,0.7);
                 // Set the ambient light
-                gl.uniform3f(u_AmbientLight, 0.4, 0.4, 0.4);
+                gl.uniform3f(u_AmbientLight, 0.2, 0.2, 0.2);
                 // Set the specular color (white)
-                gl.uniform3f(u_SpecularColor, 0.1, 0.1, 0.1);
+                gl.uniform3f(u_SpecularColor, 0.4, 0.4, 0.4);
                 // Set the ambient light
-                gl.uniform1f(u_Exponent,4);
+                gl.uniform1f(u_Exponent,3);
                 
                 gl.enableVertexAttribArray(aCoords); // won't change after initialization.
                 gl.enableVertexAttribArray(aNormal); // also won't change.
@@ -521,8 +580,11 @@
             disk = createModel(uvCylinder(5.5, 0.5, 64), [0, 0, .25]);
             ring = createModel(ring(3.3, 4.8, 40));
             cube = createModel(cube());
+            teapot = createModel(teapotModel);
             rotator = new SimpleRotator(canvas, draw);
             rotator.setView([0, 1, 2], [0, 1, 0], 16);
+            var d = new Date();
+            startTime = d.getTime();
             frame();
         }
     </script>
