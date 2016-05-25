@@ -12,5 +12,5 @@ You only need to modify the HW.html file. You need to complete/modify the file w
 1. ~~Create a fully assembled bicycle~~
 2. ~~Create a tree~~
 3. ~~Create a scene with two bicycles and 4 trees~~
-4. Modify the vertex and fragment shaders to implement Phong shading with 1 directional light (moving so to simulate the sun) and 2 positional lights positioned on the front of the bicycles
+4. . ~~Modify the vertex and fragment shaders to implement Phong shading with 1 directional light (moving so to simulate the sun) and 2 positional lights positioned on the front of the bicycles.~~
 5. (optional) Add textures on the objects (trees, disc, etc…)
